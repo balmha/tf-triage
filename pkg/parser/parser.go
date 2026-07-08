@@ -96,6 +96,10 @@ type OptimizedChange struct {
 // ---------------------------------------------------------------------------
 
 // Parse validates and decodes raw JSON bytes into a Plan.
+// Supports two input formats:
+//   1. Standard plan JSON (from `terraform show -json <planfile>`)
+//   2. Streaming line-delimited JSON (from `terraform plan -json`)
+//
 // Returns typed errors suitable for user-facing messaging.
 func Parse(data []byte) (*Plan, error) {
 	if len(data) == 0 {
@@ -103,10 +107,9 @@ func Parse(data []byte) (*Plan, error) {
 	}
 
 	// Detect Terraform's streaming log format (line-delimited JSON with @level/@message fields).
-	// This happens when users pipe `terraform plan -json` directly instead of using
-	// `terraform show -json <planfile>`.
+	// If detected, parse the streaming lines to extract planned changes.
 	if isStreamingFormat(data) {
-		return nil, ErrStreamingFormat
+		return parseStreamingFormat(data)
 	}
 
 	// First pass: verify it's valid JSON at all
@@ -289,8 +292,7 @@ func computeDiff(before, after map[string]interface{}) map[string]interface{} {
 
 // isStreamingFormat detects Terraform's streaming JSON log output.
 // When you run `terraform plan -json`, Terraform emits one JSON object per line
-// with fields like "@level", "@message", "type". This is NOT the plan schema
-// that tf-triage expects.
+// with fields like "@level", "@message", "type".
 func isStreamingFormat(data []byte) bool {
 	// Check the first line only
 	firstLine := data
@@ -302,4 +304,77 @@ func isStreamingFormat(data []byte) bool {
 	return bytes.Contains(firstLine, []byte(`"@level"`)) ||
 		bytes.Contains(firstLine, []byte(`"@message"`)) ||
 		bytes.Contains(firstLine, []byte(`"type":"version"`))
+}
+
+// ---------------------------------------------------------------------------
+// Streaming format types and parser
+// ---------------------------------------------------------------------------
+
+// streamLine represents a single line from `terraform plan -json` output.
+type streamLine struct {
+	Type      string          `json:"type"`
+	Terraform string          `json:"terraform"`
+	Change    *streamChange   `json:"change"`
+}
+
+// streamChange represents the "change" object in a planned_change line.
+type streamChange struct {
+	Resource streamResource `json:"resource"`
+	Action   string         `json:"action"`
+}
+
+// streamResource represents resource metadata in a planned_change line.
+type streamResource struct {
+	Addr            string `json:"addr"`
+	ImpliedProvider string `json:"implied_provider"`
+	ResourceType    string `json:"resource_type"`
+	ResourceName    string `json:"resource_name"`
+}
+
+// parseStreamingFormat extracts plan data from Terraform's streaming JSON log output.
+// It reads each line, picks out "planned_change" entries, and constructs a Plan.
+func parseStreamingFormat(data []byte) (*Plan, error) {
+	plan := &Plan{
+		FormatVersion:   "streaming",
+		ResourceChanges: make([]ResourceChange, 0),
+	}
+
+	lines := bytes.Split(data, []byte("\n"))
+	for _, line := range lines {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+
+		var sl streamLine
+		if err := json.Unmarshal(line, &sl); err != nil {
+			// Skip malformed lines (e.g., stderr mixed in)
+			continue
+		}
+
+		// Extract terraform version from the version line
+		if sl.Type == "version" && sl.Terraform != "" {
+			plan.TerraformVersion = sl.Terraform
+		}
+
+		// Extract resource changes from planned_change lines
+		if sl.Type == "planned_change" && sl.Change != nil {
+			rc := ResourceChange{
+				Address:      sl.Change.Resource.Addr,
+				Type:         sl.Change.Resource.ResourceType,
+				Name:         sl.Change.Resource.ResourceName,
+				ProviderName: sl.Change.Resource.ImpliedProvider,
+				Change: Change{
+					Actions: []string{sl.Change.Action},
+				},
+			}
+			plan.ResourceChanges = append(plan.ResourceChanges, rc)
+		}
+	}
+
+	if len(plan.ResourceChanges) == 0 {
+		return nil, fmt.Errorf("%w: no planned_change entries found in streaming output", ErrNoChanges)
+	}
+
+	return plan, nil
 }

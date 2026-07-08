@@ -246,9 +246,6 @@ func writeOutput(report, path string) error {
 
 func wrapParserError(err error) error {
 	switch {
-	case errors.Is(err, parser.ErrStreamingFormat):
-		return err
-
 	case errors.Is(err, parser.ErrMalformedJSON):
 		return fmt.Errorf("%w\n\n  Hint: ensure you're passing the output of 'terraform show -json' or 'terraform plan -json'", err)
 
