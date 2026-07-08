@@ -1,5 +1,5 @@
 // Package llm provides a provider-agnostic interface for sending Terraform plan
-// analysis requests to LLM APIs (Anthropic Claude, OpenAI GPT, Ollama, Groq).
+// analysis requests to LLM APIs (Anthropic Claude, OpenAI GPT, Ollama, Groq, DeepSeek).
 //
 // It uses a factory pattern to instantiate the correct provider client based on
 // configuration, and enforces timeout contexts on all HTTP calls.
@@ -45,7 +45,7 @@ var ErrOllamaConnRefused = errors.New("could not connect to local Ollama instanc
 
 // Config holds all settings needed to call an LLM provider.
 type Config struct {
-	Provider string        // "ollama", "groq", "anthropic", or "openai"
+	Provider string        // "ollama", "groq", "deepseek", "anthropic", or "openai"
 	Model    string        // Model identifier
 	APIKey   string        // Provider API key (empty for ollama)
 	Timeout  time.Duration // HTTP request timeout (default: 120s)
@@ -95,6 +95,19 @@ func NewProvider(cfg Config) (Provider, error) {
 			name:    "groq",
 		}, nil
 
+	case "deepseek":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("%w: set DEEPSEEK_API_KEY environment variable",
+				ErrAPIKeyMissing)
+		}
+		return &openaiCompatProvider{
+			baseURL: "https://api.deepseek.com/chat/completions",
+			apiKey:  cfg.APIKey,
+			model:   cfg.Model,
+			client:  &http.Client{Timeout: timeout},
+			name:    "deepseek",
+		}, nil
+
 	case "anthropic":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY environment variable",
@@ -120,7 +133,7 @@ func NewProvider(cfg Config) (Provider, error) {
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("%w: %q (supported: ollama, groq, anthropic, openai)",
+		return nil, fmt.Errorf("%w: %q (supported: ollama, groq, deepseek, anthropic, openai)",
 			ErrUnsupportedProvider, cfg.Provider)
 	}
 }
@@ -183,7 +196,7 @@ type openaiCompatProvider struct {
 	apiKey  string
 	model   string
 	client  *http.Client
-	name    string // "openai", "ollama", or "groq" — for error messages
+	name    string // "openai", "ollama", "groq", or "deepseek" — for error messages
 }
 
 type openaiReq struct {

@@ -39,6 +39,7 @@ a clean Markdown report suitable for Git Pull Request comments.
 Examples:
   terraform plan -json | tf-triage
   tf-triage -f plan.json -p groq
+  tf-triage -f plan.json -p deepseek -m deepseek-v4-pro
   tf-triage -f plan.json -p openai -m gpt-4o
   tofu plan -json | tf-triage -o report.md`,
 	SilenceUsage:  true,
@@ -48,8 +49,8 @@ Examples:
 
 func init() {
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "Path to terraform plan JSON file (defaults to stdin)")
-	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'anthropic', or 'openai'")
-	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults: llama3.2 / llama-3.3-70b-versatile / claude-3-5-sonnet / gpt-4o)")
+	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'deepseek', 'anthropic', or 'openai'")
+	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults per provider: llama3.2 / llama-3.3-70b-versatile / deepseek-v4-flash / claude-3-5-sonnet / gpt-4o)")
 	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "Path to write markdown report (defaults to stdout)")
 }
 
@@ -163,6 +164,8 @@ func resolveModel(provider, flagModel string) string {
 		return "llama3.2"
 	case "groq":
 		return "llama-3.3-70b-versatile"
+	case "deepseek":
+		return "deepseek-v4-flash"
 	case "anthropic":
 		return "claude-3-5-sonnet-20241022"
 	case "openai":
@@ -184,6 +187,12 @@ func resolveAPIKey(provider string) (string, error) {
 		}
 		return "", fmt.Errorf("GROQ_API_KEY environment variable is not set\n\n  Hint: export GROQ_API_KEY=gsk_... (free tier at https://console.groq.com)")
 
+	case "deepseek":
+		if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+			return key, nil
+		}
+		return "", fmt.Errorf("DEEPSEEK_API_KEY environment variable is not set\n\n  Hint: export DEEPSEEK_API_KEY=sk-... (get one at https://platform.deepseek.com)")
+
 	case "anthropic":
 		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 			return key, nil
@@ -197,7 +206,7 @@ func resolveAPIKey(provider string) (string, error) {
 		return "", fmt.Errorf("OPENAI_API_KEY is not set\n\n  Hint: export OPENAI_API_KEY=sk-...")
 
 	default:
-		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: ollama, groq, anthropic, openai", provider)
+		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: ollama, groq, deepseek, anthropic, openai", provider)
 	}
 }
 
