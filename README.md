@@ -28,6 +28,7 @@ terraform plan -json | tf-triage
 
 ```bash
 brew tap balmha/tap
+brew trust balmha/tap
 brew install tf-triage
 ```
 
