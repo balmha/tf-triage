@@ -29,6 +29,6 @@ brews:
     directory: Formula
     homepage: "https://github.com/balmha/tf-triage"
     description: "An AI-powered semantic plan analyzer for Terraform and OpenTofu."
-    license: "MIT"
+    license: "GPL-3.0"
     test: |
       system "#{bin}/tf-triage --version"

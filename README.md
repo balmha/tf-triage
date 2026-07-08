@@ -5,7 +5,7 @@
 **AI-powered security and architecture reviews for your Terraform plans.**
 
 [![Release](https://img.shields.io/github/v/release/balmha/tf-triage?style=flat-square)](https://github.com/balmha/tf-triage/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Go](https://img.shields.io/badge/go-%3E%3D1.21-00ADD8?style=flat-square&logo=go)](https://go.dev)
 
 ---
@@ -121,4 +121,4 @@ tf-triage/
 
 ## License
 
-MIT
+GPL-3.0
