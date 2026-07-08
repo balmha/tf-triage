@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,10 @@ var ErrMalformedJSON = errors.New("input is not valid JSON")
 // ErrNotTerraformPlan indicates the JSON does not match the expected
 // Terraform/OpenTofu plan schema.
 var ErrNotTerraformPlan = errors.New("input does not appear to be a Terraform/OpenTofu plan")
+
+// ErrStreamingFormat indicates the input is terraform's streaming JSON log
+// format rather than the plan schema.
+var ErrStreamingFormat = errors.New("input appears to be Terraform's streaming log format (line-delimited JSON), not a plan schema.\n  Use: terraform show -json <planfile> | tf-triage\n  Or:  terraform plan -out=plan.tfplan && terraform show -json plan.tfplan | tf-triage")
 
 // ErrNoChanges indicates the plan contains no resource changes to analyze.
 var ErrNoChanges = errors.New("plan contains no resource changes")
@@ -95,6 +100,13 @@ type OptimizedChange struct {
 func Parse(data []byte) (*Plan, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("%w: empty input", ErrMalformedJSON)
+	}
+
+	// Detect Terraform's streaming log format (line-delimited JSON with @level/@message fields).
+	// This happens when users pipe `terraform plan -json` directly instead of using
+	// `terraform show -json <planfile>`.
+	if isStreamingFormat(data) {
+		return nil, ErrStreamingFormat
 	}
 
 	// First pass: verify it's valid JSON at all
@@ -273,4 +285,21 @@ func computeDiff(before, after map[string]interface{}) map[string]interface{} {
 		return nil
 	}
 	return diff
+}
+
+// isStreamingFormat detects Terraform's streaming JSON log output.
+// When you run `terraform plan -json`, Terraform emits one JSON object per line
+// with fields like "@level", "@message", "type". This is NOT the plan schema
+// that tf-triage expects.
+func isStreamingFormat(data []byte) bool {
+	// Check the first line only
+	firstLine := data
+	if idx := bytes.IndexByte(data, '\n'); idx > 0 {
+		firstLine = data[:idx]
+	}
+
+	// Quick heuristic: streaming format always has "@level" or "@message" keys
+	return bytes.Contains(firstLine, []byte(`"@level"`)) ||
+		bytes.Contains(firstLine, []byte(`"@message"`)) ||
+		bytes.Contains(firstLine, []byte(`"type":"version"`))
 }
