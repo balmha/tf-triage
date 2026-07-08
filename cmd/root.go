@@ -38,6 +38,7 @@ a clean Markdown report suitable for Git Pull Request comments.
 
 Examples:
   terraform plan -json | tf-triage
+  tf-triage -f plan.json -p groq
   tf-triage -f plan.json -p openai -m gpt-4o
   tofu plan -json | tf-triage -o report.md`,
 	SilenceUsage:  true,
@@ -47,8 +48,8 @@ Examples:
 
 func init() {
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "Path to terraform plan JSON file (defaults to stdin)")
-	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "anthropic", "LLM provider: 'anthropic' or 'openai'")
-	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults: claude-3-5-sonnet / gpt-4o)")
+	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'anthropic', or 'openai'")
+	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults: llama3.2 / llama-3.3-70b-versatile / claude-3-5-sonnet / gpt-4o)")
 	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "Path to write markdown report (defaults to stdout)")
 }
 
@@ -158,6 +159,10 @@ func resolveModel(provider, flagModel string) string {
 		return env
 	}
 	switch provider {
+	case "ollama":
+		return "llama3.2"
+	case "groq":
+		return "llama-3.3-70b-versatile"
 	case "anthropic":
 		return "claude-3-5-sonnet-20241022"
 	case "openai":
@@ -169,6 +174,16 @@ func resolveModel(provider, flagModel string) string {
 
 func resolveAPIKey(provider string) (string, error) {
 	switch provider {
+	case "ollama":
+		// Ollama runs locally, no API key required
+		return "", nil
+
+	case "groq":
+		if key := os.Getenv("GROQ_API_KEY"); key != "" {
+			return key, nil
+		}
+		return "", fmt.Errorf("GROQ_API_KEY environment variable is not set\n\n  Hint: export GROQ_API_KEY=gsk_... (free tier at https://console.groq.com)")
+
 	case "anthropic":
 		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 			return key, nil
@@ -182,7 +197,7 @@ func resolveAPIKey(provider string) (string, error) {
 		return "", fmt.Errorf("OPENAI_API_KEY is not set\n\n  Hint: export OPENAI_API_KEY=sk-...")
 
 	default:
-		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: anthropic, openai", provider)
+		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: ollama, groq, anthropic, openai", provider)
 	}
 }
 
@@ -238,6 +253,9 @@ func wrapParserError(err error) error {
 
 func wrapLLMError(err error) error {
 	switch {
+	case errors.Is(err, llm.ErrOllamaConnRefused):
+		return err
+
 	case errors.Is(err, llm.ErrAPITimeout):
 		return fmt.Errorf("%w\n\n  Hint: the LLM took too long to respond; try again or use a faster model", err)
 

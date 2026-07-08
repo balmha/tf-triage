@@ -1,5 +1,5 @@
 // Package llm provides a provider-agnostic interface for sending Terraform plan
-// analysis requests to LLM APIs (Anthropic Claude, OpenAI GPT).
+// analysis requests to LLM APIs (Anthropic Claude, OpenAI GPT, Ollama, Groq).
 //
 // It uses a factory pattern to instantiate the correct provider client based on
 // configuration, and enforces timeout contexts on all HTTP calls.
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -35,15 +36,18 @@ var ErrAPITimeout = errors.New("LLM API request timed out")
 // ErrAPIFailure indicates the LLM API returned a non-200 response.
 var ErrAPIFailure = errors.New("LLM API returned an error")
 
+// ErrOllamaConnRefused indicates the local Ollama daemon is not reachable.
+var ErrOllamaConnRefused = errors.New("could not connect to local Ollama instance. Is Ollama running on http://localhost:11434?")
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
 // Config holds all settings needed to call an LLM provider.
 type Config struct {
-	Provider string // "anthropic" or "openai"
-	Model    string // Model identifier (e.g., "claude-3-5-sonnet-20241022")
-	APIKey   string // Provider API key
+	Provider string        // "ollama", "groq", "anthropic", or "openai"
+	Model    string        // Model identifier
+	APIKey   string        // Provider API key (empty for ollama)
 	Timeout  time.Duration // HTTP request timeout (default: 120s)
 }
 
@@ -63,18 +67,39 @@ type Provider interface {
 // NewProvider is the factory function that returns the appropriate Provider
 // implementation based on the config.
 func NewProvider(cfg Config) (Provider, error) {
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("%w: set the appropriate environment variable for provider %q",
-			ErrAPIKeyMissing, cfg.Provider)
-	}
-
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = DefaultTimeout
 	}
 
 	switch strings.ToLower(cfg.Provider) {
+	case "ollama":
+		return &openaiCompatProvider{
+			baseURL: "http://localhost:11434/v1/chat/completions",
+			apiKey:  "", // No auth required
+			model:   cfg.Model,
+			client:  &http.Client{Timeout: timeout},
+			name:    "ollama",
+		}, nil
+
+	case "groq":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("%w: set GROQ_API_KEY environment variable",
+				ErrAPIKeyMissing)
+		}
+		return &openaiCompatProvider{
+			baseURL: "https://api.groq.com/openai/v1/chat/completions",
+			apiKey:  cfg.APIKey,
+			model:   cfg.Model,
+			client:  &http.Client{Timeout: timeout},
+			name:    "groq",
+		}, nil
+
 	case "anthropic":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("%w: set ANTHROPIC_API_KEY environment variable",
+				ErrAPIKeyMissing)
+		}
 		return &anthropicProvider{
 			apiKey: cfg.APIKey,
 			model:  cfg.Model,
@@ -82,14 +107,20 @@ func NewProvider(cfg Config) (Provider, error) {
 		}, nil
 
 	case "openai":
-		return &openaiProvider{
-			apiKey: cfg.APIKey,
-			model:  cfg.Model,
-			client: &http.Client{Timeout: timeout},
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("%w: set OPENAI_API_KEY environment variable",
+				ErrAPIKeyMissing)
+		}
+		return &openaiCompatProvider{
+			baseURL: "https://api.openai.com/v1/chat/completions",
+			apiKey:  cfg.APIKey,
+			model:   cfg.Model,
+			client:  &http.Client{Timeout: timeout},
+			name:    "openai",
 		}, nil
 
 	default:
-		return nil, fmt.Errorf("%w: %q (supported: anthropic, openai)",
+		return nil, fmt.Errorf("%w: %q (supported: ollama, groq, anthropic, openai)",
 			ErrUnsupportedProvider, cfg.Provider)
 	}
 }
@@ -141,6 +172,85 @@ func buildUserMessage(plan *parser.OptimizedPlan) (string, error) {
 		return "", fmt.Errorf("failed to serialize plan for LLM: %w", err)
 	}
 	return fmt.Sprintf("Analyze the following Terraform/OpenTofu plan changes:\n\n```json\n%s\n```", string(payload)), nil
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI-compatible provider (used by OpenAI, Ollama, and Groq)
+// ---------------------------------------------------------------------------
+
+type openaiCompatProvider struct {
+	baseURL string
+	apiKey  string
+	model   string
+	client  *http.Client
+	name    string // "openai", "ollama", or "groq" — for error messages
+}
+
+type openaiReq struct {
+	Model    string      `json:"model"`
+	Messages []openaiMsg `json:"messages"`
+}
+
+type openaiMsg struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openaiResp struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"error"`
+}
+
+func (p *openaiCompatProvider) Analyze(ctx context.Context, plan *parser.OptimizedPlan) (string, error) {
+	userMsg, err := buildUserMessage(plan)
+	if err != nil {
+		return "", err
+	}
+
+	reqBody := openaiReq{
+		Model: p.model,
+		Messages: []openaiMsg{
+			{Role: "system", Content: systemPrompt},
+			{Role: "user", Content: userMsg},
+		},
+	}
+
+	// Build headers
+	headers := map[string]string{
+		"Content-Type": "application/json",
+	}
+	if p.apiKey != "" {
+		headers["Authorization"] = "Bearer " + p.apiKey
+	}
+
+	respBytes, err := doPost(ctx, p.client, p.baseURL, headers, reqBody)
+	if err != nil {
+		// Check for Ollama connection refused
+		if p.name == "ollama" && isConnectionRefused(err) {
+			return "", ErrOllamaConnRefused
+		}
+		return "", err
+	}
+
+	var resp openaiResp
+	if err := json.Unmarshal(respBytes, &resp); err != nil {
+		return "", fmt.Errorf("failed to decode %s response: %w", p.name, err)
+	}
+	if resp.Error != nil {
+		return "", fmt.Errorf("%w: [%s] %s", ErrAPIFailure, resp.Error.Type, resp.Error.Message)
+	}
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("%w: %s returned no choices", ErrAPIFailure, p.name)
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -225,80 +335,6 @@ func (p *anthropicProvider) doRequest(ctx context.Context, body interface{}) ([]
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI Chat Completions API
-// ---------------------------------------------------------------------------
-
-const openaiURL = "https://api.openai.com/v1/chat/completions"
-
-type openaiProvider struct {
-	apiKey string
-	model  string
-	client *http.Client
-}
-
-type openaiReq struct {
-	Model    string      `json:"model"`
-	Messages []openaiMsg `json:"messages"`
-}
-
-type openaiMsg struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type openaiResp struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error"`
-}
-
-func (p *openaiProvider) Analyze(ctx context.Context, plan *parser.OptimizedPlan) (string, error) {
-	userMsg, err := buildUserMessage(plan)
-	if err != nil {
-		return "", err
-	}
-
-	reqBody := openaiReq{
-		Model: p.model,
-		Messages: []openaiMsg{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userMsg},
-		},
-	}
-
-	respBytes, err := p.doRequest(ctx, reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	var resp openaiResp
-	if err := json.Unmarshal(respBytes, &resp); err != nil {
-		return "", fmt.Errorf("failed to decode OpenAI response: %w", err)
-	}
-	if resp.Error != nil {
-		return "", fmt.Errorf("%w: [%s] %s", ErrAPIFailure, resp.Error.Type, resp.Error.Message)
-	}
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("%w: OpenAI returned no choices", ErrAPIFailure)
-	}
-
-	return resp.Choices[0].Message.Content, nil
-}
-
-func (p *openaiProvider) doRequest(ctx context.Context, body interface{}) ([]byte, error) {
-	return doPost(ctx, p.client, openaiURL, map[string]string{
-		"Content-Type":  "application/json",
-		"Authorization": "Bearer " + p.apiKey,
-	}, body)
-}
-
-// ---------------------------------------------------------------------------
 // Shared HTTP helper with context support
 // ---------------------------------------------------------------------------
 
@@ -344,4 +380,15 @@ func truncateBody(data []byte, maxLen int) string {
 		return s[:maxLen] + "... (truncated)"
 	}
 	return s
+}
+
+// isConnectionRefused checks if the error is a TCP connection refused.
+func isConnectionRefused(err error) bool {
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		return true
+	}
+	// Also check the stringified error for wrapped cases
+	return strings.Contains(err.Error(), "connection refused") ||
+		strings.Contains(err.Error(), "connect: connection refused")
 }
