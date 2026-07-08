@@ -6,14 +6,35 @@ Semantic architectural and security analysis of Terraform/OpenTofu plans, powere
 
 ## Installation
 
+### Homebrew (macOS)
+
 ```bash
-go install github.com/tf-triage/tf-triage@latest
+brew tap balmha/tap
+brew install tf-triage
 ```
 
-Or build from source:
+### Linux / macOS (one-liner)
 
 ```bash
-git clone https://github.com/tf-triage/tf-triage.git
+curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
+```
+
+Optionally pin a version or change the install directory:
+
+```bash
+VERSION=v0.1.0 INSTALL_DIR=~/.local/bin curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
+```
+
+### Go install
+
+```bash
+go install github.com/balmha/tf-triage@latest
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/balmha/tf-triage.git
 cd tf-triage
 go build -o tf-triage .
 ```
