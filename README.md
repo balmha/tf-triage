@@ -1,8 +1,26 @@
+<div align="center">
+
 # tf-triage
 
-Semantic architectural and security analysis of Terraform/OpenTofu plans, powered by LLMs.
+**AI-powered security and architecture reviews for your Terraform plans.**
 
-`tf-triage` ingests `terraform plan -json` (or `tofu plan -json`) output, runs it through an LLM for architectural and security review, and produces a Markdown report ready to post as a Pull Request comment.
+[![Release](https://img.shields.io/github/v/release/balmha/tf-triage?style=flat-square)](https://github.com/balmha/tf-triage/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Go](https://img.shields.io/badge/go-%3E%3D1.21-00ADD8?style=flat-square&logo=go)](https://go.dev)
+
+---
+
+Pipe your `terraform plan -json` through `tf-triage` and get an instant
+security audit, architecture impact analysis, and blast radius assessment
+— formatted as Markdown, ready to drop into a PR comment.
+
+```
+terraform plan -json | tf-triage
+```
+
+</div>
+
+---
 
 ## Installation
 
