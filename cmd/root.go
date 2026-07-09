@@ -49,8 +49,8 @@ Examples:
 
 func init() {
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "Path to terraform plan JSON file (defaults to stdin)")
-	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'deepseek', 'anthropic', or 'openai'")
-	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults per provider: llama3.2 / llama-3.3-70b-versatile / deepseek-v4-flash / claude-3-5-sonnet / gpt-4o)")
+	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'deepseek', 'gemini', 'anthropic', or 'openai'")
+	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults per provider: llama3.2 / llama-3.3-70b-versatile / deepseek-v4-flash / gemini-1.5-flash / claude-3-5-sonnet / gpt-4o)")
 	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "Path to write markdown report (defaults to stdout)")
 }
 
@@ -166,6 +166,8 @@ func resolveModel(provider, flagModel string) string {
 		return "llama-3.3-70b-versatile"
 	case "deepseek":
 		return "deepseek-v4-flash"
+	case "gemini":
+		return "gemini-1.5-flash"
 	case "anthropic":
 		return "claude-3-5-sonnet-20241022"
 	case "openai":
@@ -193,6 +195,12 @@ func resolveAPIKey(provider string) (string, error) {
 		}
 		return "", fmt.Errorf("DEEPSEEK_API_KEY environment variable is not set\n\n  Hint: export DEEPSEEK_API_KEY=sk-... (get one at https://platform.deepseek.com)")
 
+	case "gemini":
+		if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+			return key, nil
+		}
+		return "", fmt.Errorf("GEMINI_API_KEY environment variable is not set\n\n  Hint: export GEMINI_API_KEY=... (get one at https://aistudio.google.com/apikey)")
+
 	case "anthropic":
 		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 			return key, nil
@@ -206,7 +214,7 @@ func resolveAPIKey(provider string) (string, error) {
 		return "", fmt.Errorf("OPENAI_API_KEY is not set\n\n  Hint: export OPENAI_API_KEY=sk-...")
 
 	default:
-		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: ollama, groq, deepseek, anthropic, openai", provider)
+		return "", fmt.Errorf("unsupported provider %q\n\n  Supported: ollama, groq, deepseek, gemini, anthropic, openai", provider)
 	}
 }
 
