@@ -1,0 +1,33 @@
+# Bitbucket Pipelines configuration for tf-triage
+# Posts a security and architecture analysis as a Pull Request comment.
+#
+# Requirements:
+#   - Terraform/OpenTofu configured in the repo
+#   - GROQ_API_KEY set as a repository variable
+#   - BITBUCKET_TOKEN set as a repository variable (App Password or Repository Access Token)
+
+image: hashicorp/terraform:1.5
+
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: Terraform Plan
+          script:
+            - cd infra
+            - terraform init
+            - terraform plan -out=plan.tfplan
+            - terraform show -json plan.tfplan > ../plan.json
+          artifacts:
+            - plan.json
+
+      - step:
+          name: tf-triage Analysis
+          image: golang:1.21-alpine
+          script:
+            - apk add --no-cache curl bash
+            - curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
+            - tf-triage -f plan.json -p groq
+            - tf-triage comment
+          after-script:
+            - echo "tf-triage analysis complete"

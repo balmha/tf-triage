@@ -1,0 +1,59 @@
+# GitHub Actions workflow for tf-triage using Ollama (fully local, no API keys)
+# Runs the LLM analysis inside the runner with zero external dependencies.
+#
+# Note: This uses a self-hosted runner or a larger GitHub-hosted runner
+# since Ollama needs ~4GB RAM for llama3.2.
+
+name: Terraform Plan Analysis (Ollama)
+
+on:
+  pull_request:
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  tf-triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.5'
+          terraform_wrapper: false
+
+      - name: Install Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          sleep 5
+          ollama pull llama3.2
+
+      - name: Install tf-triage
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./infra
+
+      - name: Terraform Plan (JSON)
+        run: |
+          terraform plan -out=plan.tfplan
+          terraform show -json plan.tfplan > plan.json
+        working-directory: ./infra
+
+      - name: Run tf-triage analysis (local Ollama)
+        run: tf-triage -f ./infra/plan.json
+
+      - name: Post comment on PR
+        run: tf-triage comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
