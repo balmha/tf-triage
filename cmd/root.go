@@ -52,6 +52,8 @@ func init() {
 	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'deepseek', 'gemini', 'anthropic', or 'openai'")
 	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults per provider: llama3.2 / llama-3.3-70b-versatile / deepseek-v4-flash / gemini-1.5-flash / claude-3-5-sonnet / gpt-4o)")
 	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "tf-triage-results.md", "File path to save the markdown report")
+
+	rootCmd.AddCommand(commentCmd)
 }
 
 // SetVersion configures the version string displayed by --version.
