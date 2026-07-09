@@ -3,7 +3,7 @@
 #
 # Requirements:
 #   - Terraform/OpenTofu configured in the repo
-#   - GROQ_API_KEY (or another provider key) set as a CI/CD variable
+#   - DEEPSEEK_API_KEY set as a CI/CD variable
 #   - GITLAB_TOKEN set as a CI/CD variable with 'api' scope
 #   - Pipeline must be triggered by a merge request event
 
@@ -20,8 +20,7 @@ terraform-plan:
   script:
     - cd $TF_DIR
     - terraform init
-    - terraform plan -out=plan.tfplan
-    - terraform show -json plan.tfplan > ../plan.json
+    - terraform plan -json > ../plan.json
   artifacts:
     paths:
       - plan.json
@@ -38,10 +37,10 @@ tf-triage-analysis:
     - apk add --no-cache curl bash
     - curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
   script:
-    - tf-triage -f plan.json -p groq
+    - tf-triage --file plan.json --provider deepseek
     - tf-triage comment
   variables:
-    GROQ_API_KEY: $GROQ_API_KEY
+    DEEPSEEK_API_KEY: $DEEPSEEK_API_KEY
     GITLAB_TOKEN: $GITLAB_TOKEN
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
