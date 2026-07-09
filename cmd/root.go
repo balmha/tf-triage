@@ -51,7 +51,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&flagFile, "file", "f", "", "Path to terraform plan JSON file (defaults to stdin)")
 	rootCmd.Flags().StringVarP(&flagProvider, "provider", "p", "ollama", "LLM provider: 'ollama', 'groq', 'deepseek', 'gemini', 'anthropic', or 'openai'")
 	rootCmd.Flags().StringVarP(&flagModel, "model", "m", "", "LLM model override (defaults per provider: llama3.2 / llama-3.3-70b-versatile / deepseek-v4-flash / gemini-1.5-flash / claude-3-5-sonnet / gpt-4o)")
-	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "Path to write markdown report (defaults to stdout)")
+	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "tf-triage-results.md", "File path to save the markdown report")
 }
 
 // SetVersion configures the version string displayed by --version.
@@ -236,15 +236,10 @@ func renderReport(markdown string) string {
 }
 
 func writeOutput(report, path string) error {
-	if path != "" {
-		if err := os.WriteFile(path, []byte(report), 0644); err != nil {
-			return fmt.Errorf("failed to write report to %q: %w", path, err)
-		}
-		fmt.Fprintf(os.Stderr, "Report written to %s\n", path)
-		return nil
+	if err := os.WriteFile(path, []byte(report), 0644); err != nil {
+		return fmt.Errorf("failed to write report to %q: %w", path, err)
 	}
-
-	fmt.Print(report)
+	fmt.Printf("✔ Summary report successfully saved to: %s\n", path)
 	return nil
 }
 
