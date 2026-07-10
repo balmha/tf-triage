@@ -16,6 +16,7 @@ a security audit with blast radius assessment — all from a single command.
 [Installation](#installation) •
 [Providers](#providers) •
 [Usage](#usage) •
+[Red Team Mode](#advanced-security-auditing-red-team-mode) •
 [CI/CD Examples](./examples/)
 
 </div>
