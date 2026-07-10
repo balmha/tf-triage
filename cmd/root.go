@@ -54,6 +54,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&flagOutput, "output", "o", "tf-triage-results.md", "File path to save the markdown report")
 
 	rootCmd.AddCommand(commentCmd)
+	rootCmd.AddCommand(redteamCmd)
 }
 
 // SetVersion configures the version string displayed by --version.

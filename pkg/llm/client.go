@@ -45,10 +45,11 @@ var ErrOllamaConnRefused = errors.New("could not connect to local Ollama instanc
 
 // Config holds all settings needed to call an LLM provider.
 type Config struct {
-	Provider string        // "ollama", "groq", "deepseek", "gemini", "anthropic", or "openai"
-	Model    string        // Model identifier
-	APIKey   string        // Provider API key (empty for ollama)
-	Timeout  time.Duration // HTTP request timeout (default: 120s)
+	Provider     string        // "ollama", "groq", "deepseek", "gemini", "anthropic", or "openai"
+	Model        string        // Model identifier
+	APIKey       string        // Provider API key (empty for ollama)
+	Timeout      time.Duration // HTTP request timeout (default: 120s)
+	SystemPrompt string        // Custom system prompt (uses default if empty)
 }
 
 // DefaultTimeout is applied when Config.Timeout is zero.
@@ -75,11 +76,12 @@ func NewProvider(cfg Config) (Provider, error) {
 	switch strings.ToLower(cfg.Provider) {
 	case "ollama":
 		return &openaiCompatProvider{
-			baseURL: "http://localhost:11434/v1/chat/completions",
-			apiKey:  "", // No auth required
-			model:   cfg.Model,
-			client:  &http.Client{Timeout: timeout},
-			name:    "ollama",
+			baseURL:      "http://localhost:11434/v1/chat/completions",
+			apiKey:       "", // No auth required
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			name:         "ollama",
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	case "groq":
@@ -88,11 +90,12 @@ func NewProvider(cfg Config) (Provider, error) {
 				ErrAPIKeyMissing)
 		}
 		return &openaiCompatProvider{
-			baseURL: "https://api.groq.com/openai/v1/chat/completions",
-			apiKey:  cfg.APIKey,
-			model:   cfg.Model,
-			client:  &http.Client{Timeout: timeout},
-			name:    "groq",
+			baseURL:      "https://api.groq.com/openai/v1/chat/completions",
+			apiKey:       cfg.APIKey,
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			name:         "groq",
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	case "deepseek":
@@ -101,11 +104,12 @@ func NewProvider(cfg Config) (Provider, error) {
 				ErrAPIKeyMissing)
 		}
 		return &openaiCompatProvider{
-			baseURL: "https://api.deepseek.com/chat/completions",
-			apiKey:  cfg.APIKey,
-			model:   cfg.Model,
-			client:  &http.Client{Timeout: timeout},
-			name:    "deepseek",
+			baseURL:      "https://api.deepseek.com/chat/completions",
+			apiKey:       cfg.APIKey,
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			name:         "deepseek",
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	case "gemini":
@@ -114,11 +118,12 @@ func NewProvider(cfg Config) (Provider, error) {
 				ErrAPIKeyMissing)
 		}
 		return &openaiCompatProvider{
-			baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-			apiKey:  cfg.APIKey,
-			model:   cfg.Model,
-			client:  &http.Client{Timeout: timeout},
-			name:    "gemini",
+			baseURL:      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+			apiKey:       cfg.APIKey,
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			name:         "gemini",
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	case "anthropic":
@@ -127,9 +132,10 @@ func NewProvider(cfg Config) (Provider, error) {
 				ErrAPIKeyMissing)
 		}
 		return &anthropicProvider{
-			apiKey: cfg.APIKey,
-			model:  cfg.Model,
-			client: &http.Client{Timeout: timeout},
+			apiKey:       cfg.APIKey,
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	case "openai":
@@ -138,11 +144,12 @@ func NewProvider(cfg Config) (Provider, error) {
 				ErrAPIKeyMissing)
 		}
 		return &openaiCompatProvider{
-			baseURL: "https://api.openai.com/v1/chat/completions",
-			apiKey:  cfg.APIKey,
-			model:   cfg.Model,
-			client:  &http.Client{Timeout: timeout},
-			name:    "openai",
+			baseURL:      "https://api.openai.com/v1/chat/completions",
+			apiKey:       cfg.APIKey,
+			model:        cfg.Model,
+			client:       &http.Client{Timeout: timeout},
+			name:         "openai",
+			customPrompt: cfg.SystemPrompt,
 		}, nil
 
 	default:
@@ -205,11 +212,12 @@ func buildUserMessage(plan *parser.OptimizedPlan) (string, error) {
 // ---------------------------------------------------------------------------
 
 type openaiCompatProvider struct {
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
-	name    string // "openai", "ollama", "groq", "deepseek", or "gemini" — for error messages
+	baseURL      string
+	apiKey       string
+	model        string
+	client       *http.Client
+	name         string // "openai", "ollama", "groq", "deepseek", or "gemini" — for error messages
+	customPrompt string // overrides systemPrompt if set
 }
 
 type openaiReq struct {
@@ -240,10 +248,15 @@ func (p *openaiCompatProvider) Analyze(ctx context.Context, plan *parser.Optimiz
 		return "", err
 	}
 
+	prompt := systemPrompt
+	if p.customPrompt != "" {
+		prompt = p.customPrompt
+	}
+
 	reqBody := openaiReq{
 		Model: p.model,
 		Messages: []openaiMsg{
-			{Role: "system", Content: systemPrompt},
+			{Role: "system", Content: prompt},
 			{Role: "user", Content: userMsg},
 		},
 	}
@@ -286,9 +299,10 @@ func (p *openaiCompatProvider) Analyze(ctx context.Context, plan *parser.Optimiz
 const anthropicURL = "https://api.anthropic.com/v1/messages"
 
 type anthropicProvider struct {
-	apiKey string
-	model  string
-	client *http.Client
+	apiKey       string
+	model        string
+	client       *http.Client
+	customPrompt string
 }
 
 type anthropicReq struct {
@@ -320,10 +334,15 @@ func (p *anthropicProvider) Analyze(ctx context.Context, plan *parser.OptimizedP
 		return "", err
 	}
 
+	prompt := systemPrompt
+	if p.customPrompt != "" {
+		prompt = p.customPrompt
+	}
+
 	reqBody := anthropicReq{
 		Model:     p.model,
 		MaxTokens: 4096,
-		System:    systemPrompt,
+		System:    prompt,
 		Messages:  []anthropicMsg{{Role: "user", Content: userMsg}},
 	}
 

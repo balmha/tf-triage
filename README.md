@@ -209,6 +209,45 @@ The LLM produces a structured report with three sections:
 
 ---
 
+## Advanced Security Auditing: Red Team Mode
+
+`tf-triage` isn't just for workflow summaries — it can actively hunt for exploitable attack chains in your infrastructure before deployment. The `redteam` sub-command shifts into offensive security mode, acting as an automated penetration tester that scans your plans for multi-resource vulnerability chains.
+
+### Local Threat Modeling via Ollama
+
+Run an offline security evaluation for free — your plans never leave your machine:
+
+```bash
+terraform plan -json | tf-triage redteam
+```
+
+### Cloud-Powered Red Team Analysis
+
+Use a cloud provider for deeper reasoning on complex infrastructure:
+
+```bash
+tf-triage redteam -f plan.json -p deepseek
+```
+
+### Output Structure
+
+The red team report includes three sections:
+
+- **Exploitation Summary** — Critical risk score (LOW/MEDIUM/HIGH/CRITICAL) with an executive threat landscape overview.
+- **The Vulnerability Chain** — Step-by-step attack narrative showing how an adversary chains misconfigurations across resources.
+- **Proof of Concept (PoC)** — Actionable verification commands (curl, aws cli, nmap) to validate the exposure.
+
+### Pipeline Integration
+
+The redteam report is fully compatible with `tf-triage comment` — post it directly to your PR:
+
+```bash
+terraform plan -json | tf-triage redteam -o tf-redteam-report.md
+tf-triage comment -i tf-redteam-report.md
+```
+
+---
+
 ## License
 
 GPL-3.0
