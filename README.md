@@ -93,8 +93,8 @@ tf-triage -f plan.json -p openai -m gpt-4o
 ### Homebrew (macOS)
 
 ```bash
-brew tap balmha/tap
-brew install tf-triage
+brew trust --formula balmha/tap/tf-triage
+brew install balmha/tap/tf-triage
 ```
 
 ### Linux / macOS (one-liner)
@@ -106,7 +106,7 @@ curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | 
 Optionally pin a version or change the install directory:
 
 ```bash
-VERSION=v0.5.0 INSTALL_DIR=~/.local/bin curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
+VERSION=v0.7.0 INSTALL_DIR=~/.local/bin curl -sSfL https://raw.githubusercontent.com/balmha/tf-triage/main/install.sh | bash
 ```
 
 ### Go install
@@ -197,24 +197,6 @@ The LLM produces a structured report with three sections:
 - **Blast Radius Assessment** — LOW / MEDIUM / HIGH classification with justification.
 
 ---
-
-## Project Structure
-
-```
-tf-triage/
-├── main.go
-├── cmd/
-│   └── root.go         # CLI flags and pipeline orchestration
-├── pkg/
-│   ├── parser/
-│   │   └── parser.go   # Plan parsing, validation, token optimization
-│   └── llm/
-│       └── client.go   # Provider factory, API clients, system prompt
-├── install.sh          # Curl installer for Linux/macOS
-├── .goreleaser.yaml    # Cross-platform release builds
-└── .github/workflows/
-    └── release.yml     # Tag-triggered CI/CD
-```
 
 ## License
 
