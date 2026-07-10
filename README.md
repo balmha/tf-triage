@@ -8,17 +8,28 @@
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Go](https://img.shields.io/badge/go-%3E%3D1.21-00ADD8?style=flat-square&logo=go)](https://go.dev)
 
+<img alt="tf-triage demo" src="./triage.gif" width="700" />
+
+`tf-triage` analyzes your Terraform and OpenTofu plans using LLMs and generates
+a security audit with blast radius assessment — all from a single command.
+
+[Installation](#installation) •
+[Providers](#providers) •
+[Usage](#usage) •
+[CI/CD Examples](./examples/)
+
+</div>
+
 ---
 
-Pipe your `terraform plan -json` through `tf-triage` and get an instant
-security audit, architecture impact analysis, and blast radius assessment
-— formatted as Markdown, ready to drop into a PR comment.
+To get started, [install](#installation) `tf-triage` and choose a [provider](#providers).
+Run it locally with [Ollama](#using-ollama-local-private-free) (no API keys, fully private)
+or use a [cloud provider](#using-cloud-providers) like DeepSeek, Groq, or Gemini for faster inference.
+Pipe your plan and get a Markdown report ready to drop into a PR comment:
 
 ```
 terraform plan -json | tf-triage
 ```
-
-</div>
 
 ---
 
